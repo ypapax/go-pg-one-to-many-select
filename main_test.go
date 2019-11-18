@@ -17,22 +17,16 @@ import (
 
 type Company struct {
 	TableName struct{} `sql:"companies"`
-	ID        int64
+	ID        int
 	Name      string
-	Customers []*Customer `pg:",many2many:companies_customers"`
+	CEO       *Person
+	CEOid     int   `sql:"ceo_id"`
 }
 
-type Customer struct {
-	TableName struct{} `sql:"customers"`
-	ID        int64
+type Person struct {
+	TableName struct{} `sql:"people"`
+	ID        int
 	Name      string
-	Companies []*Company `pg:",many2many:companies_customers"`
-}
-
-type CompanyCustomer struct {
-	TableName  struct{} `sql:"companies_customers"`
-	CompanyID  int64    `sql:"company_id"`
-	CustomerID int64    `sql:"customer_id"`
 }
 
 const (
@@ -44,7 +38,7 @@ var connectionString string
 var db *pg.DB
 
 func TestMain(m *testing.M) {
-	flag.StringVar(&connectionString, "postgres", "postgres://postgres:postgres@localhost:5439/customers?sslmode=disable", "connection string for postgres")
+	flag.StringVar(&connectionString, "postgres", "postgres://postgres:postgres@localhost:5439/companies?sslmode=disable", "connection string for postgres")
 	flag.Parse()
 	babbler.Separator = " "
 	babbler.Count = wordsCount
@@ -59,91 +53,33 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestTwoCustomers(t *testing.T) {
+func TestHasOne(t *testing.T) {
 	as := assert.New(t)
-	customers := []*Customer{
-		{Name: "customer 1" + babbler.Babble()},
-		{Name: "customer 2" + babbler.Babble()},
+	ceo := &Person{Name: "ceo 1" + babbler.Babble()}
+	if !as.NoError(db.Insert(ceo)) {
+		return
 	}
-	for _, cust := range customers {
-		if !as.NoError(db.Insert(cust)) {
-			return
-		}
-	}
-
 	com := &Company{
-		Name:      babbler.Babble(),
-		Customers: customers,
+		Name:  babbler.Babble(),
+		CEO:   ceo,
+		CEOid: ceo.ID,
 	}
 	if !as.NoError(db.Insert(com)) {
 		return
 	}
-	for _, cus := range customers {
-		companyCustomer := &CompanyCustomer{CompanyID: com.ID, CustomerID: cus.ID}
-		if err := db.Insert(companyCustomer); !as.NoError(err) {
-			return
-		}
-	}
 	var compSelect Company
-	if !as.NoError(db.Model(&compSelect).Column("Customers").Where("company.name = ?", com.Name).Select()) {
+	if !as.NoError(db.Model(&compSelect).Column("company.*").Relation("CEO").Where("company.name = ?", com.Name).Select()) {
 		return
 	}
 	if !as.NotZero(compSelect.ID) {
 		return
 	}
-	if !as.Len(compSelect.Customers, len(customers)) {
+	if !as.NotNil(compSelect.CEO) {
 		return
 	}
 
-	for i, c1 := range customers {
-		as.Equal(c1.Name, compSelect.Customers[i].Name)
-	}
-}
-
-func TestTwoCompanies(t *testing.T) {
-	as := assert.New(t)
-	companies := []*Company{
-		{Name: "company 1" + babbler.Babble()},
-		{Name: "company 2" + babbler.Babble()},
-	}
-	for _, comp := range companies {
-		if !as.NoError(db.Insert(comp)) {
-			return
-		}
-	}
-
-	cust := &Customer{
-		Name:      babbler.Babble(),
-		Companies: companies,
-	}
-	if !as.NoError(db.Insert(cust)) {
+	if !as.Equal(ceo.Name, compSelect.CEO.Name) {
 		return
-	}
-	for _, com := range companies {
-		companyCustomer := &CompanyCustomer{CompanyID: com.ID, CustomerID: cust.ID}
-		if err := db.Insert(companyCustomer); !as.NoError(err) {
-			return
-		}
-	}
-	var custSelect Customer
-	if !as.NoError(db.Model(&custSelect).Column("Companies").Where("customer.name = ?", cust.Name).Select()) {
-		return
-	}
-	t.Logf("custSelect %+v", custSelect)
-	if !as.Equal(cust.Name, custSelect.Name) {
-		return
-	}
-	if !as.NotZero(custSelect.ID) {
-		return
-	}
-	if !as.Len(custSelect.Companies, len(companies)) {
-		return
-	}
-	for i, c1 := range companies {
-		as.Equal(c1.Name, custSelect.Companies[i].Name)
-	}
-	for _, comp := range custSelect.Companies {
-		t.Logf("company %+v", comp)
 	}
 }
 
@@ -190,7 +126,7 @@ func connectToPostgres(connectionString string) (*pg.DB, error) {
 }
 
 func createSchema(db *pg.DB) error {
-	for _, model := range []interface{}{(*Company)(nil), (*Customer)(nil)} {
+	for _, model := range []interface{}{(*Company)(nil), (*Person)(nil)} {
 		err := db.CreateTable(model, &orm.CreateTableOptions{
 			IfNotExists: true,
 			//Temp: true,

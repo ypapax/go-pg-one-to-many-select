@@ -2,7 +2,7 @@ version: "3"
 services:
   postgres:
     image: postgres
-    container_name: postgres
+    container_name: postgres-go-pg-one-to-many
     ports:
       - 5439:5432/tcp
     volumes:
