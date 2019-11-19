@@ -47,9 +47,6 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		logrus.Fatalf("%+v", err)
 	}
-	/*if err := createSchema(db); err != nil {
-		logrus.Fatalf("%+v", err)
-	}*/
 	os.Exit(m.Run())
 }
 
@@ -61,7 +58,6 @@ func TestHasOne(t *testing.T) {
 	}
 	com := &Company{
 		Name:  babbler.Babble(),
-		CEO:   ceo,
 		CEOid: ceo.ID,
 	}
 	if !as.NoError(db.Insert(com)) {
@@ -81,6 +77,7 @@ func TestHasOne(t *testing.T) {
 	if !as.Equal(ceo.Name, compSelect.CEO.Name) {
 		return
 	}
+	t.Logf("compSelect.CEO.Name: %+v", compSelect.CEO.Name)
 }
 
 func connectToPostgresTimeout(connectionString string, timeout, retry time.Duration) (*pg.DB, error) {
